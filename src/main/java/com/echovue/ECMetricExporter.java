@@ -3,6 +3,7 @@ package com.echovue;
 import com.amazonaws.services.cloudwatch.AmazonCloudWatch;
 import com.amazonaws.services.cloudwatch.AmazonCloudWatchClientBuilder;
 import com.amazonaws.services.cloudwatch.model.Datapoint;
+import com.amazonaws.services.cloudwatch.model.Dimension;
 import com.amazonaws.services.cloudwatch.model.GetMetricStatisticsRequest;
 import com.amazonaws.services.cloudwatch.model.GetMetricStatisticsResult;
 import com.amazonaws.services.lambda.runtime.Context;
@@ -45,7 +46,7 @@ public class ECMetricExporter implements
 
             AmazonCloudWatch cwClient = AmazonCloudWatchClientBuilder.defaultClient();
 
-            logger.log("Getting the CPU Results");
+            logger.log("\nGetting the CPU Results\n");
             GetMetricStatisticsResult cpuResult = cwClient.getMetricStatistics(getGetMetricStatisticsRequest(
                     endTime, startTime, EC_NAMESPACE, CPU_UTILIZATION, Arrays.asList(AVERAGE)));
 
@@ -53,15 +54,16 @@ public class ECMetricExporter implements
                 logger.log(p.getTimestamp() + " CPU Metric:" + p.getAverage() + " " + p.getUnit() + "\n");
             }
 
-            logger.log("Getting the HIT Results");
+            logger.log("\nGetting the HIT Results\n");
             GetMetricStatisticsResult hitsResult = cwClient.getMetricStatistics(getGetMetricStatisticsRequest(
                     endTime, startTime, EC_NAMESPACE, CACHE_HITS, Arrays.asList(AVERAGE, MAXIMUM, MINIMUM, SAMPLE_COUNT)));
 
             for (Datapoint p : hitsResult.getDatapoints()) {
-                logger.log(p.getTimestamp() + " HIT Metric:" + p.getAverage() + " " + p.getUnit() + "\n");
+                logger.log(p.getTimestamp() + " HIT Average:" + p.getAverage() + " " + p.getUnit() + "\n");
+                logger.log(p.getTimestamp() + " HIT Maxium" + p.getMaximum() + " " + p.getUnit() + "\n");
             }
 
-            logger.log("Getting the MISS Results");
+            logger.log("\nGetting the MISS Results\n");
             GetMetricStatisticsResult missResult = cwClient.getMetricStatistics(getGetMetricStatisticsRequest(
                     endTime, startTime, EC_NAMESPACE, CACHE_MISSES, Arrays.asList(AVERAGE, MAXIMUM, MINIMUM, SAMPLE_COUNT)));
 
@@ -86,7 +88,6 @@ public class ECMetricExporter implements
                         .withNamespace(namespace)
                         .withMetricName(cpuUtilization)
                         .withStatistics(statistics);
-                        //.withDimensions(Arrays.asList(new Dimension().withName("cacheClusterId").withValue(cacheClusterId)));
     }
 
 /*    private List<Dimension> getDimensions() {
