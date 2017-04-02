@@ -3,13 +3,14 @@ package com.echovue;
 import com.amazonaws.services.cloudwatch.AmazonCloudWatch;
 import com.amazonaws.services.cloudwatch.AmazonCloudWatchClientBuilder;
 import com.amazonaws.services.cloudwatch.model.Datapoint;
-import com.amazonaws.services.cloudwatch.model.Dimension;
 import com.amazonaws.services.cloudwatch.model.GetMetricStatisticsRequest;
 import com.amazonaws.services.cloudwatch.model.GetMetricStatisticsResult;
 import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.LambdaLogger;
 import com.amazonaws.services.lambda.runtime.RequestHandler;
+import com.echovue.model.ESMetrics;
 import com.echovue.model.ScheduledEvent;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.util.Arrays;
 import java.util.Date;
@@ -27,12 +28,16 @@ public class ECMetricExporter implements
     private static final String CACHE_MISSES = "CacheMisses";
     private static final String CURR_ITEMS = "CurrItems";
     private static final String CURR_CONNECTIONS = "CurrConnections";
+    private static final String RECLAIMED = "Reclaimed";
+    private static final String REPLICATION_BYTES = "ReplicationBytes";
+    private static final String EVICTIONS = "Evictions";
+    private static final String SWAP_USAGE = "SwapUsage";
+    private static final String NETWORK_BYTES_OUT = "NetworkBytesOut";
+    private static final String NETWORK_BYTES_IN = "NetworkBytesIn";
 
     private static final String AVERAGE = "Average";
-    private static final String MAXIMUM = "Maximum";
-    private static final String MINIMUM = "Minimum";
-    private static final String SAMPLE_COUNT = "SampleCount";
-    private static final String SUM = "Sum";
+
+    private ObjectMapper mapper = new ObjectMapper();
 
     public String handleRequest(final ScheduledEvent event, final Context context) {
         LambdaLogger logger = context.getLogger();
@@ -41,35 +46,49 @@ public class ECMetricExporter implements
             GregorianCalendar calendar = new GregorianCalendar(TimeZone.getTimeZone("UTC"));
             calendar.add(GregorianCalendar.SECOND, -1 * calendar.get(GregorianCalendar.SECOND)); // 1 second ago
             Date endTime = calendar.getTime();
-            calendar.add(GregorianCalendar.MINUTE, -1); // 5 minutes ago
+            calendar.add(GregorianCalendar.MINUTE, -1);
             Date startTime = calendar.getTime();
 
-            AmazonCloudWatch cwClient = AmazonCloudWatchClientBuilder.defaultClient();
+            ESMetrics metrics = new ESMetrics();
+            metrics.setStartDate(startTime);
+            metrics.setEndDate(endTime);
 
-            logger.log("\nGetting the CPU Results\n");
+            AmazonCloudWatch cwClient = AmazonCloudWatchClientBuilder.defaultClient();
             GetMetricStatisticsResult cpuResult = cwClient.getMetricStatistics(getGetMetricStatisticsRequest(
                     endTime, startTime, EC_NAMESPACE, CPU_UTILIZATION, Arrays.asList(AVERAGE)));
-
-            for (Datapoint p : cpuResult.getDatapoints()) {
-                logger.log(p.getTimestamp() + " CPU Metric:" + p.getAverage() + " " + p.getUnit() + "\n");
-            }
-
-            logger.log("\nGetting the HIT Results\n");
             GetMetricStatisticsResult hitsResult = cwClient.getMetricStatistics(getGetMetricStatisticsRequest(
-                    endTime, startTime, EC_NAMESPACE, CACHE_HITS, Arrays.asList(AVERAGE, MAXIMUM, MINIMUM, SAMPLE_COUNT)));
-
-            for (Datapoint p : hitsResult.getDatapoints()) {
-                logger.log(p.getTimestamp() + " HIT Average:" + p.getAverage() + " " + p.getUnit() + "\n");
-                logger.log(p.getTimestamp() + " HIT Maxium" + p.getMaximum() + " " + p.getUnit() + "\n");
-            }
-
-            logger.log("\nGetting the MISS Results\n");
+                    endTime, startTime, EC_NAMESPACE, CACHE_HITS, Arrays.asList(AVERAGE)));
             GetMetricStatisticsResult missResult = cwClient.getMetricStatistics(getGetMetricStatisticsRequest(
-                    endTime, startTime, EC_NAMESPACE, CACHE_MISSES, Arrays.asList(AVERAGE, MAXIMUM, MINIMUM, SAMPLE_COUNT)));
+                    endTime, startTime, EC_NAMESPACE, CACHE_MISSES, Arrays.asList(AVERAGE)));
+            GetMetricStatisticsResult currItemsResult = cwClient.getMetricStatistics(getGetMetricStatisticsRequest(
+                    endTime, startTime, EC_NAMESPACE, CURR_ITEMS, Arrays.asList(AVERAGE)));
+            GetMetricStatisticsResult currConnectionsResult = cwClient.getMetricStatistics(getGetMetricStatisticsRequest(
+                    endTime, startTime, EC_NAMESPACE, CURR_CONNECTIONS, Arrays.asList(AVERAGE)));
+            GetMetricStatisticsResult reclaimedResult = cwClient.getMetricStatistics(getGetMetricStatisticsRequest(
+                    endTime, startTime, EC_NAMESPACE, RECLAIMED, Arrays.asList(AVERAGE)));
+            GetMetricStatisticsResult replicationByteResult = cwClient.getMetricStatistics(getGetMetricStatisticsRequest(
+                    endTime, startTime, EC_NAMESPACE, REPLICATION_BYTES, Arrays.asList(AVERAGE)));
+            GetMetricStatisticsResult evictionResult = cwClient.getMetricStatistics(getGetMetricStatisticsRequest(
+                    endTime, startTime, EC_NAMESPACE, EVICTIONS, Arrays.asList(AVERAGE)));
+            GetMetricStatisticsResult swapUsageResult = cwClient.getMetricStatistics(getGetMetricStatisticsRequest(
+                    endTime, startTime, EC_NAMESPACE, SWAP_USAGE, Arrays.asList(AVERAGE)));
+            GetMetricStatisticsResult networkBytesOutResult = cwClient.getMetricStatistics(getGetMetricStatisticsRequest(
+                    endTime, startTime, EC_NAMESPACE, NETWORK_BYTES_OUT, Arrays.asList(AVERAGE)));
+            GetMetricStatisticsResult networkBytesInResult = cwClient.getMetricStatistics(getGetMetricStatisticsRequest(
+                    endTime, startTime, EC_NAMESPACE, NETWORK_BYTES_IN, Arrays.asList(AVERAGE)));
 
-            for (Datapoint p : missResult.getDatapoints()) {
-                logger.log(p.getTimestamp() + " MISS Metric:" + p.getAverage() + " " + p.getUnit() + "\n");
-            }
+            for (Datapoint p : cpuResult.getDatapoints()) { metrics.setCpuUtilization(p.getAverage()); }
+            for (Datapoint p : hitsResult.getDatapoints()) { metrics.setCacheHits(p.getAverage()); }
+            for (Datapoint p : missResult.getDatapoints()) { metrics.setCacheMisses(p.getAverage()); }
+            for (Datapoint p : currItemsResult.getDatapoints()) { metrics.setCurrItems(p.getAverage()); }
+            for (Datapoint p : currConnectionsResult.getDatapoints()) { metrics.setCurrConnections(p.getAverage()); }
+            for (Datapoint p : reclaimedResult.getDatapoints()) { metrics.setReclaimed(p.getAverage()); }
+            for (Datapoint p : replicationByteResult.getDatapoints()) { metrics.setReplicationBytes(p.getAverage()); }
+            for (Datapoint p : evictionResult.getDatapoints()) { metrics.setEvictions(p.getAverage()); }
+            for (Datapoint p : swapUsageResult.getDatapoints()) { metrics.setSwapUsage(p.getAverage()); }
+            for (Datapoint p : networkBytesInResult.getDatapoints()) { metrics.setNetworkBytesIn(p.getAverage()); }
+            for (Datapoint p : networkBytesOutResult.getDatapoints()) { metrics.setNetworkBytesOut(p.getAverage()); }
+            logger.log(mapper.writeValueAsString(metrics));
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -79,68 +98,10 @@ public class ECMetricExporter implements
     private GetMetricStatisticsRequest getGetMetricStatisticsRequest(final Date endTime,
                                                                      final Date startTime,
                                                                      final String namespace,
-                                                                     final String cpuUtilization,
+                                                                     final String metricName,
                                                                      final List<String> statistics) {
-        return new GetMetricStatisticsRequest()
-                        .withStartTime(startTime)
-                        .withEndTime(endTime)
-                        .withPeriod(300)
-                        .withNamespace(namespace)
-                        .withMetricName(cpuUtilization)
+        return new GetMetricStatisticsRequest().withStartTime(startTime).withEndTime(endTime)
+                        .withPeriod(300).withNamespace(namespace).withMetricName(metricName)
                         .withStatistics(statistics);
     }
-
-/*    private List<Dimension> getDimensions() {
-        List<Dimension> dimensions = Lists.newArrayList();
-        dimensions.add(new Dimension().withName("CacheClusterId").withValue(CACHE_CLUSTER_ID));
-//        dimensions.add(new Dimension().withName("CacheNodeId").withValue(CACHE_NODE_ID));
-        return dimensions;
-    }
-
-    private Collection<String> getStatistics() {
-//        CPUUtilization|Average CPUUtilization|Minimum CPUUtilization|Maximum NetworkIn|Sum NetworkOut|Sum
-        List<String> statistics = Lists.newArrayList();
-        statistics.add("Average");
-        return statistics;
-    }
-/*        Pattern pattern = Pattern.compile(ZIP_CODE_REGEX);
-        ObjectMapper objectMapper = new ObjectMapper();
-        for (DynamodbStreamRecord record : ddbEvent.getRecords()){
-            try {
-                if (record.getEventName().equals(INSERT)) {
-                    if (null == dynamoDB) {
-                        dynamoDB = new DynamoDB(new AmazonDynamoDBClient().withRegion(
-                                Regions.fromName(record.getAwsRegion())));
-                        table = dynamoDB.getTable(TABLE_NAME);
-                    }
-                    Address address = objectMapper.readValue(
-                            record.getDynamodb().getNewImage().get(ADDRESS).getS().toString(), Address.class);
-                    if (!Boolean.TRUE.equals(address.getValidated())) {
-                        address.setValidated(pattern.matcher(address.getZipcode()).matches());
-                        UpdateItemSpec updateItemSpec = new UpdateItemSpec()
-                            .withPrimaryKey(ID, record.getDynamodb().getKeys().get(ID).getS())
-                            .withUpdateExpression("set address = :a")
-                            .withValueMap(new ValueMap()
-                                .withString(":a", objectMapper.writeValueAsString(address)))
-                            .withReturnValues(ReturnValue.UPDATED_NEW);
-                        table.updateItem(updateItemSpec);
-                    }
-                }
-            } catch (IOException e) {
-                logger.log("Exception thrown when validating Zip Code. " + e.getMessage());
-            }
-        }*/
-//        return "Validated " + ddbEvent.getRecords().size() + " records.";
-//    }
-/*
-    //        Properties properties = setProperties(event);
-    private Properties setProperties(ScheduledEvent event) {
-        LocalDate endDate = LocalDate.parse(event.getTime(), DateTimeFormatter.ISO_INSTANT);
-        LocalDate startDate = endDate.minus(1, MINUTES);
-        Properties properties = new Properties();
-        properties.setProperty("startTime", startDate.format(DateTimeFormatter.ISO_INSTANT));
-        properties.setProperty("endTime", endDate.format(DateTimeFormatter.ISO_INSTANT));
-        properties.setProperty("EC_NAMESPACE", "AWS/ElastiCache");
-        return properties;
-    }*/
 }
