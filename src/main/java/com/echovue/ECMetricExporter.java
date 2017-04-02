@@ -45,18 +45,28 @@ public class ECMetricExporter implements
 
             AmazonCloudWatch cwClient = AmazonCloudWatchClientBuilder.defaultClient();
 
+            logger.log("Getting the CPU Results");
             GetMetricStatisticsResult cpuResult = cwClient.getMetricStatistics(getGetMetricStatisticsRequest(
-                    endTime, startTime, EC_NAMESPACE, CPU_UTILIZATION, Arrays.asList(AVERAGE, MAXIMUM, MINIMUM)));
+                    endTime, startTime, EC_NAMESPACE, CPU_UTILIZATION, Arrays.asList(AVERAGE)));
 
             for (Datapoint p : cpuResult.getDatapoints()) {
                 logger.log(p.getTimestamp() + " CPU Metric:" + p.getAverage() + " " + p.getUnit() + "\n");
             }
 
+            logger.log("Getting the HIT Results");
             GetMetricStatisticsResult hitsResult = cwClient.getMetricStatistics(getGetMetricStatisticsRequest(
                     endTime, startTime, EC_NAMESPACE, CACHE_HITS, Arrays.asList(AVERAGE, MAXIMUM, MINIMUM, SAMPLE_COUNT)));
 
             for (Datapoint p : hitsResult.getDatapoints()) {
                 logger.log(p.getTimestamp() + " HIT Metric:" + p.getAverage() + " " + p.getUnit() + "\n");
+            }
+
+            logger.log("Getting the MISS Results");
+            GetMetricStatisticsResult missResult = cwClient.getMetricStatistics(getGetMetricStatisticsRequest(
+                    endTime, startTime, EC_NAMESPACE, CACHE_MISSES, Arrays.asList(AVERAGE, MAXIMUM, MINIMUM, SAMPLE_COUNT)));
+
+            for (Datapoint p : missResult.getDatapoints()) {
+                logger.log(p.getTimestamp() + " MISS Metric:" + p.getAverage() + " " + p.getUnit() + "\n");
             }
         } catch (Exception e) {
             e.printStackTrace();
